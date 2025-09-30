@@ -61,7 +61,7 @@ const NetworkVisualization: React.FC = () => {
         });
         
         const lines = csvText.trim().split('\n');
-        const connections: NetworkConnection[] = lines.slice(1)
+        const allConnections: NetworkConnection[] = lines.slice(1)
           .filter(line => line.trim())
           .map(line => {
             // Parse CSV line properly handling quoted fields
@@ -82,7 +82,7 @@ const NetworkVisualization: React.FC = () => {
             }
             values.push(current.trim()); // Add the last value
             
-            const connection = {
+            return {
               gene1: values[0],
               gene2: values[1],
               connection_type: values[2],
@@ -91,10 +91,45 @@ const NetworkVisualization: React.FC = () => {
               details: values[5].replace(/"/g, ''),
               color: values[6]
             };
-            
-            
-            return connection;
           });
+
+        // Group connections by gene pairs to show both types when they exist
+        const connectionMap = new Map<string, NetworkConnection[]>();
+        
+        allConnections.forEach(conn => {
+          // Create a unique key for each gene pair (order independent)
+          const key = [conn.gene1, conn.gene2].sort().join('-');
+          if (!connectionMap.has(key)) {
+            connectionMap.set(key, []);
+          }
+          connectionMap.get(key)!.push(conn);
+        });
+        
+        // Create edges for each connection, using arrows to differentiate directions/types
+        const connections: NetworkConnection[] = [];
+        connectionMap.forEach((conns, key) => {
+          if (conns.length === 1) {
+            // Single connection - add as is
+            connections.push(conns[0]);
+          } else {
+            // Multiple connections - add both with different directions
+            const statistical = conns.find(c => c.connection_type === 'Statistical Similarity');
+            const coloc = conns.find(c => c.connection_type === 'Coloc Evidence');
+            
+            if (statistical) {
+              connections.push({
+                ...statistical,
+                direction: 'statistical' // Custom property to identify type
+              } as NetworkConnection & { direction: string });
+            }
+            if (coloc) {
+              connections.push({
+                ...coloc,
+                direction: 'coloc' // Custom property to identify type
+              } as NetworkConnection & { direction: string });
+            }
+          }
+        });
 
         // Create nodes
         const geneSet = new Set<string>();
@@ -128,8 +163,8 @@ const NetworkVisualization: React.FC = () => {
               background: geneColors[gene as keyof typeof geneColors] || '#95A5A6',
               border: '#2C3E50',
               highlight: {
-                background: '#F39C12',
-                border: '#E67E22'
+                background: '#1565C0',
+                border: '#0D47A1'
               }
             },
             font: {
@@ -152,29 +187,45 @@ const NetworkVisualization: React.FC = () => {
           };
         });
 
-        // Create edges - sin hover tooltip, solo panel lateral
-        const edges = connections.map((conn, index) => ({
-          id: index,
-          from: conn.gene1,
-          to: conn.gene2,
-          color: {
-            color: conn.color,
-            highlight: '#F39C12',
-            hover: '#F39C12',
-            inherit: false
-          },
-          width: Math.max(3, conn.weight * 2),
-          selectionWidth: Math.max(5, conn.weight * 3),
-          hoverWidth: Math.max(4, conn.weight * 2.5),
-          smooth: {
-            enabled: true,
-            type: 'continuous',
-            roundness: 0.2
-          },
-          physics: true,
-          connectionData: conn
-          // Sin título para eliminar tooltip
-        }));
+        // Create edges with arrows to show different connection types
+        const edges = connections.map((conn, index) => {
+          const connWithDirection = conn as NetworkConnection & { direction?: string };
+          
+          // For bidirectional connections, use arrows and different curvature
+          const hasDirection = connWithDirection.direction;
+          const isStatistical = connWithDirection.direction === 'statistical';
+          const isColoc = connWithDirection.direction === 'coloc';
+          
+          return {
+            id: index,
+            from: hasDirection && isColoc ? conn.gene2 : conn.gene1, // Reverse for coloc to show arrow in opposite direction
+            to: hasDirection && isColoc ? conn.gene1 : conn.gene2,
+            color: {
+              color: conn.color,
+              highlight: '#1565C0',
+              hover: '#1565C0',
+              inherit: false
+            },
+            width: Math.max(1, conn.weight * 0.8),
+            selectionWidth: Math.max(2, conn.weight * 1.2),
+            hoverWidth: Math.max(1.5, conn.weight * 1),
+            smooth: {
+              enabled: true,
+              type: 'continuous',
+              roundness: hasDirection ? (isStatistical ? 0.1 : 0.3) : 0.2 // Different curvature for different types
+            },
+            arrows: {
+              to: {
+                enabled: hasDirection, // Show arrows only when there are multiple connection types
+                scaleFactor: 0.8,
+                type: 'arrow'
+              }
+            },
+            physics: true,
+            connectionData: conn
+            // Sin título para eliminar tooltip
+          };
+        });
 
         
         setNetworkData({ nodes, edges });
@@ -256,7 +307,6 @@ const NetworkVisualization: React.FC = () => {
           const edgeId = params.edges[0];
           const edge = networkData.edges.find(e => e.id === edgeId);
           if (edge && edge.connectionData) {
-            console.log('Selected connection data:', edge.connectionData);
             setSelectedConnection(edge.connectionData);
             setSelectedGene(null);
           }
@@ -333,7 +383,21 @@ const NetworkVisualization: React.FC = () => {
             {selectedConnection ? (
               <Box>
                 <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 2 }}>
-                  {selectedConnection.gene1} ↔ {selectedConnection.gene2}
+                  {(() => {
+                    const connWithDirection = selectedConnection as NetworkConnection & { direction?: string };
+                    const hasDirection = connWithDirection.direction;
+                    const isColoc = connWithDirection.direction === 'coloc';
+                    
+                    if (hasDirection) {
+                      // Show directional arrow based on connection type
+                      return isColoc 
+                        ? `${selectedConnection.gene2} → ${selectedConnection.gene1}`  // Reversed for coloc
+                        : `${selectedConnection.gene1} → ${selectedConnection.gene2}`; // Normal for statistical
+                    } else {
+                      // Show bidirectional for single connections
+                      return `${selectedConnection.gene1} ↔ ${selectedConnection.gene2}`;
+                    }
+                  })()}
                 </Typography>
                 
                 <Box sx={{ mb: 2 }}>
@@ -373,6 +437,19 @@ const NetworkVisualization: React.FC = () => {
                   <Typography variant="body2">
                     {selectedConnection.details}
                   </Typography>
+                  {(() => {
+                    const connWithDirection = selectedConnection as NetworkConnection & { direction?: string };
+                    const hasDirection = connWithDirection.direction;
+                    
+                    if (hasDirection) {
+                      return (
+                        <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic', color: 'text.secondary' }}>
+                          Conexión direccional: {connWithDirection.direction === 'coloc' ? 'Coloc Evidence' : 'Statistical Similarity'}
+                        </Typography>
+                      );
+                    }
+                    return null;
+                  })()}
                 </Box>
               </Box>
             ) : selectedGene ? (
