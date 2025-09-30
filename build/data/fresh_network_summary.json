@@ -1,0 +1,17 @@
+{
+  "total_genes": 5,
+  "total_eqtls": 215,
+  "total_connections": 14,
+  "genes_in_network": 5,
+  "connection_types": {
+    "Statistical Similarity": 10,
+    "Coloc Evidence": 4
+  },
+  "gene_degrees": {
+    "CACNA1C": 4,
+    "CHD8": 4,
+    "CNTNAP2": 4,
+    "FOXP2": 4,
+    "THEMIS": 4
+  }
+}
