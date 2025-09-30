@@ -1,6 +1,7 @@
 # Análisis eQTL - Genes Mirror Neuron en Autismo
 
 Aplicación web interactiva para el análisis de genes candidatos mirror neuron en autismo basado en datos reales de GTEx v8 y Grove et al. 2019 GWAS.
+Correspondiente al proyecto https://github.com/AnaaSol/Autism-gene-mirror-neurons
 
 ## 🧬 Descripción
 
